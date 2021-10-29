@@ -24,14 +24,43 @@ void *get_in_addr(struct sockaddr *sa)
 	}
 	return &(((struct sockaddr_in6 *)sa)->sin6_addr);
 }
+unsigned char* CryptFunction(std::string s){
+	
+	int inputlen = s.length();
+	unsigned char input[inputlen + 1];
+	int i;
+    for (i = 0; i < sizeof(input); i++) 
+	{
+        input[i] = s[i];
+    }
+	AES_KEY encryptkey;
+	AES_KEY decryptkey;
+	AES_set_encrypt_key((const unsigned char *)"xsimav01", 256, &encryptkey); //AES_set_encrypt_key(const unsigned char *userKey, const int bits, AES_KEY *key);
+	AES_set_decrypt_key((const unsigned char *)"xsimav01", 256, &decryptkey);
+
+	unsigned char *output = (unsigned char *)calloc(inputlen +(inputlen % AES_BLOCK_SIZE),1);//TODO? naopak?
+	printf("Puvodni: %s\n",input);
+	AES_encrypt(input,output,&encryptkey);
+	printf("Sifrovano: %s\n",output);
+	for (unsigned i =0; i< AES_BLOCK_SIZE; i++)
+	{
+		printf("%X " ,output[i]);
+	}
+	AES_decrypt(output,input,&decryptkey);
+	printf("\nDesifrovano: %s\n",input);
+	return output;
+	}
+//--------------------------------
+
 
 
 int main(int argc, char **argv){
 	char *pom="google.com";
 	int rflag = 0;
   	int sflag = 0;
+	bool lflag = false;
 	int c;
-	while ((c = getopt (argc, argv, "r:s:")) != -1){
+	while ((c = getopt (argc, argv, "r:s:l")) != -1){
 		
 		switch (c)
 		{
@@ -45,13 +74,22 @@ int main(int argc, char **argv){
 			pom=optarg;
 			sflag=1;
 			break;
+
+		case ('l'):
+			printf("L arg \n");
+			lflag=true;
+			break;
 		case ('?'):
 		if (optopt=='s'||optopt=='r' )
 		{
 			printf("Chybi arguument u -%c",optopt);
 		}
 		}
+		
 	}
+
+	if (lflag) {printf("JEDNA SE O SERVER\n");}
+	
     
     struct addrinfo hints, *res;
 	memset(&hints, 0, sizeof(hints));
@@ -99,68 +137,68 @@ int main(int argc, char **argv){
 		return 1;
 	}
 
-	char packet[maxvelpacketu];
-	memset(&packet, 0,maxvelpacketu);
-	char zprava[]="a";
-	struct icmphdr* icmp;
-	icmp = (struct icmphdr*)(packet + sizeof(struct icmphdr));
-	icmp->code=ICMP_ECHO;
-	memcpy(packet,zprava,strlen(zprava));
+	
 
-	/*ssize_t sendto(int sockfd, const void *buf, size_t len, int flags,
-               const struct sockaddr *dest_addr, socklen_t addrlen);
-			   */
-
-	if (sendto(mysocket,packet,sizeof(struct icmp)+strlen(zprava),0,res->ai_addr,res->ai_addrlen) <=1)
-	{
-		fprintf(stderr,"Chyba pri posilani"); //Locally detected errors are indicated by a return value of -1.
-		return 1;
-	}
-
-	unsigned char input [] = "AhojAhojAhojAhojAhojAhojAhojAhojAhojAHoj";
-	int inputlen = 40;
-	AES_KEY encryptkey;
-	AES_KEY decryptkey;
-	AES_set_encrypt_key((const unsigned char *)"xsimav01", 256, &encryptkey); //AES_set_encrypt_key(const unsigned char *userKey, const int bits, AES_KEY *key);
-	AES_set_decrypt_key((const unsigned char *)"xsimav01", 256, &decryptkey);
-
-	unsigned char *output = (unsigned char *)calloc(inputlen +(inputlen % AES_BLOCK_SIZE),1);//TODO? naopak?
-	printf("%s\n",input);
-	AES_encrypt(input,output,&encryptkey);
-	printf("%s\n",output);
-	for (unsigned i =0; i< AES_BLOCK_SIZE; i++){
-		printf("%X " ,output[i]);
-	}
-	AES_decrypt(output,input,&decryptkey);
-	printf("\n%s\n",input);
 
 	ifstream my_file;
 	std::string s = "";
-	my_file.open("text.txt"); // opens the file
+	my_file.open("text2.txt"); // opens the file
     if(!my_file) { // file couldn't be opened
       printf("Error: file could not be opened\n");
       exit(1);
    	}
 	else {
 		char ch;
-
+		unsigned int counter=0;
 		while (1) {
 			my_file >> ch;
 			if (my_file.eof())
 				break;
 			
 			s.append(1,ch);
+			counter++;
 		}
-		std::cout << s;
-		printf("Size of %lu\n",sizeof(s));
-		for (int i = 0; i < sizeof(s);i++)
-		{
-			printf("Char %c\n",s[i]);
-		}
-		
-			
+		printf("Length %lu\n",s.length());
+				
 		}
 	my_file.close();
+
+	//std::cout << s << "\n";
+	std::string pom1500;
+	while(s!="")
+	{
+		
+		if (s.length()<maxvelpacketu)
+		{
+			pom1500=s.substr(0,s.length());
+			s.erase(s.begin(),s.begin()+s.length());
+		}
+		else
+		{
+			pom1500=s.substr(0,maxvelpacketu);
+			s.erase(s.begin(),s.begin()+maxvelpacketu);
+		}
+
+		unsigned char* a= CryptFunction(pom1500);
+		char packet[maxvelpacketu];
+		memset(&packet, 0,maxvelpacketu);
+		struct icmphdr* icmp;
+		icmp = (struct icmphdr*)(packet + sizeof(struct icmphdr));
+		icmp->code=ICMP_ECHO;
+		memcpy(packet,a,strlen((char*)a));
+
+		/*ssize_t sendto(int sockfd, const void *buf, size_t len, int flags,
+				const struct sockaddr *dest_addr, socklen_t addrlen);
+				*/
+
+		if (sendto(mysocket,packet,sizeof(struct icmp)+strlen((char*)a),0,res->ai_addr,res->ai_addrlen) <=1)
+		{
+			fprintf(stderr,"Chyba pri posilani"); //Locally detected errors are indicated by a return value of -1.
+			return 1;
+		}
+		std::cout << "Send packet \n";
+		std::cout << packet;
+	}
 
 	
 
