@@ -11,10 +11,23 @@
 #include<iostream>
 #include <fstream>
 #include <pcap.h>
+#include <netinet/ether.h> 
+
+#include <netinet/in.h>
+#include <netinet/ip.h>
+#include <netinet/tcp.h>
+#include <netinet/udp.h>
+
 using std::ifstream;
+using namespace std;
 int n = 0;
+#define SIZE_ETHERNET (14)   
+#define __FAVOR_BSD    
 
-
+//globalni promenne pro server
+bool FileWasOopened=false;
+int pocetfrompacket=0;
+std::string filenamefrompacket;
 
 
 
@@ -27,12 +40,39 @@ void *get_in_addr(struct sockaddr *sa)
 	}
 	return &(((struct sockaddr_in6 *)sa)->sin6_addr);
 }
+
+unsigned char* DecryptFunction(unsigned char* input)
+{
+	AES_KEY decryptkey;
+	AES_set_decrypt_key((const unsigned char *)"xsimav01", 256, &decryptkey);
+	unsigned char input44[AES_BLOCK_SIZE];
+	unsigned char *output44 =(unsigned char *)calloc(AES_BLOCK_SIZE,1);
+	unsigned char *output = (unsigned char *)calloc(strlen((char *)input) +(AES_BLOCK_SIZE - (strlen((char *)input) % AES_BLOCK_SIZE)),1); //neblizsi nasobek
+	int i, j;
+	printf("%ld sizeof\n",strlen((char *)input));
+	for (i = 0; i < strlen((char *)input); i=i+AES_BLOCK_SIZE) 
+	{
+		for (j=0; j < AES_BLOCK_SIZE; j++)
+		{
+			input44[j]=input[i+j];
+		}
+		
+		AES_decrypt(input44,output44,&decryptkey);
+		for (j=0; j < AES_BLOCK_SIZE; j++)
+		{
+			output[i+j]=output44[j];
+		}
+	
+	}
+	return output;
+
+}
 unsigned char* CryptFunction(std::string s){
 	
 	AES_KEY encryptkey;
-	AES_KEY decryptkey;
+
 	AES_set_encrypt_key((const unsigned char *)"xsimav01", 256, &encryptkey); //AES_set_encrypt_key(const unsigned char *userKey, const int bits, AES_KEY *key);
-	AES_set_decrypt_key((const unsigned char *)"xsimav01", 256, &decryptkey);
+	
 	int inputlen = s.length();
 	unsigned char input[inputlen + 1];
 	int i, j;
@@ -68,21 +108,6 @@ unsigned char* CryptFunction(std::string s){
 	}
 	*/
 
-	for (i = 0; i < sizeof(output); i=i+AES_BLOCK_SIZE) 
-		{
-			for (j=0; j < AES_BLOCK_SIZE; j++)
-			{
-				output44[j]=output[i+j];
-			}
-			
-			AES_decrypt(output44,input44,&decryptkey);
-			for (j=0; j < AES_BLOCK_SIZE; j++)
-			{
-				input[i+j]=input44[j];
-			}
-		
-		}
-	printf("\nDesifrovano: %s\n",input);
 	return output;
 	}
 //--------------------------------
@@ -97,6 +122,78 @@ void mypcap_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
   n++;
   printf("Packet no. %d:\n",n);
   printf("\tLength %d, received at %s",header->len,ctime((const time_t*)&header->ts.tv_sec));  
+  eptr = (struct ether_header *) packet+2;
+  printf("\tSource MAC: %s\n",ether_ntoa((const struct ether_addr *)&eptr->ether_shost)) ;
+  printf("\tDestination MAC: %s\n",ether_ntoa((const struct ether_addr *)&eptr->ether_dhost));
+
+
+
+    my_ip = (struct ip*) (packet+16);        // skip Ethernet header
+    size_ip = my_ip->ip_hl*4;                           // length of IP header
+	struct icmphdr *icmp = (struct icmphdr *)(packet+16+20);
+	unsigned char *data=(u_char*)(packet+16+20+8);	
+
+
+    printf("\tIP: id 0x%x, hlen %d bytes, version %d, total length %d bytes, TTL %d\n",ntohs(my_ip->ip_id),size_ip,my_ip->ip_v,ntohs(my_ip->ip_len),my_ip->ip_ttl);
+    std::string src = inet_ntoa(my_ip->ip_src);
+	std::string dst = inet_ntoa(my_ip->ip_dst);
+	std::cout << src << "\n";
+	std::cout << dst << "\n";
+	std::cout << std::to_string(icmp->type) << "\n";
+	std::cout << std::to_string(icmp->code) << "\n";
+	std::cout << data << "\n";
+	data=DecryptFunction(data);
+	printf("Desifrovano: %s\n",data);
+	char checkfirst[8];
+
+	
+
+
+	//kontrola zda se se jedna o prvni packet
+	if (strlen((char*)data)>7  && strlen((char*)data)<100)
+	{
+		for (int i=0; i<8; i++){
+		checkfirst[i]=data[i];
+
+		}
+		if (strcmp(checkfirst,"FILENAME")==0)
+		{
+			char *token = strtok((char*)data, ";");
+					token = strtok(NULL, ";");
+					filenamefrompacket=token;
+					std::cout << filenamefrompacket << " Filename from packet\n";
+					token = strtok(NULL, ";");
+					pocetfrompacket= atoi(token);
+					std::cout << pocetfrompacket << " Pocet packetu\n";
+					// otevrit (vytvorit soubor)
+					fstream MyFile("ser_"+filenamefrompacket);
+					FileWasOopened=true;
+					MyFile.close();
+					return;
+					
+		}
+	}
+
+	if(FileWasOopened && pocetfrompacket>0)
+	{	
+		ofstream file_out;
+		file_out.open("ser_"+filenamefrompacket, std::ios_base::app);
+		file_out << data << endl;
+
+		pocetfrompacket--;
+		if (pocetfrompacket==0)
+		{
+			FileWasOopened=false;
+		}
+
+
+
+	}
+	
+	
+  
+
+  
 }
 
 
@@ -165,7 +262,7 @@ int main(int argc, char **argv){
 		printf("Selected devname: %s\n",devname);
 
 		 // get IP address and mask of the sniffing interface
-		if (pcap_lookupnet(devname,&netaddr,&mask,errbuf) == -1)
+		if (pcap_lookupnet(NULL,&netaddr,&mask,errbuf) == -1)
 			printf("pcap_lookupnet() failed");
 
 		a.s_addr=netaddr;
@@ -174,11 +271,11 @@ int main(int argc, char **argv){
 		printf("mask %s for listening...\n",inet_ntoa(b));
 
 				// open the interface for live sniffing
-		if ((handle = pcap_open_live(devname,BUFSIZ,1,1000,errbuf)) == NULL)
+		if ((handle = pcap_open_live("any",BUFSIZ,1,1000,errbuf)) == NULL)
 			printf("pcap_open_live() failed");
 		
 		// compile the filter
-		if (pcap_compile(handle,&fp,"icmp",0,netaddr) == -1)
+		if (pcap_compile(handle,&fp,"icmp or icmp6",0,netaddr) == -1)
 			printf("pcap_compile() failed");
 		
 		// set the filter to the packet capture handle
@@ -195,7 +292,7 @@ int main(int argc, char **argv){
 
 	else //- jedna se o klienta
 	{
-		struct addrinfo hints, *res;
+	struct addrinfo hints, *res;
 	memset(&hints, 0, sizeof(hints));
 
     hints.ai_family = AF_UNSPEC;  /* Allow IPv4 or IPv6 */
@@ -219,7 +316,7 @@ int main(int argc, char **argv){
 
 
 	int protocol;
-	int maxvelpacketu=1472; //ipv4 (1500-20(ipv4 hlavicka)-8(sizeof icmph))
+	int maxvelpacketu=1430; //ipv4 (1500-20(ipv4 hlavicka)-8(sizeof icmph)-32)
 	if (res->ai_family == AF_INET) //nastaveni protokolu na zaklade family
 		{
 			protocol = IPPROTO_ICMP;
@@ -257,11 +354,40 @@ int main(int argc, char **argv){
 			my_file_data.append(1,ch);
 			counter++;
 		}
-		printf("Length %lu\n",my_file_data.length());
+		
 				
 		}
 	my_file.close();
+	int pocetpacketu=0;
+	if (my_file_data.length() % 1430==0) { pocetpacketu=my_file_data.length() / 1430;}
+	else {pocetpacketu=my_file_data.length() / 1430 +1;}
 
+	char packet[maxvelpacketu];
+	memset(&packet, 0,maxvelpacketu);
+	struct icmphdr* icmp =(struct icmphdr *)packet;
+	icmp->code=ICMP_ECHO;
+	icmp->type=8; //ECHO
+	std::string firstpacketvalue = "FILENAME;";
+	firstpacketvalue.append(filename);
+	firstpacketvalue.append(";");
+	firstpacketvalue.append(std::to_string(pocetpacketu));
+	unsigned char* CryptedData= CryptFunction(firstpacketvalue);
+
+	memcpy(packet+sizeof(struct icmphdr),CryptedData,strlen((char*)CryptedData));
+
+		/*ssize_t sendto(int sockfd, const void *buf, size_t len, int flags,
+				const struct sockaddr *dest_addr, socklen_t addrlen);
+				*/
+
+		if (sendto(mysocket,packet,sizeof(struct icmp)+strlen((char*)CryptedData),0,res->ai_addr,res->ai_addrlen) <=1)
+		{
+			fprintf(stderr,"Chyba pri posilani"); //Locally detected errors are indicated by a return value of -1.
+			return 1;
+		}
+		std::cout << "Send packet \n";
+
+	
+	
 	//std::cout << s << "\n";
 	std::string my_file_data_splitted;
 	while(my_file_data!="")
@@ -278,12 +404,12 @@ int main(int argc, char **argv){
 			my_file_data.erase(my_file_data.begin(),my_file_data.begin()+maxvelpacketu);
 		}
 
-		unsigned char* CryptedData= CryptFunction(my_file_data_splitted);
-		char packet[maxvelpacketu];
-		memset(&packet, 0,maxvelpacketu);
-		struct icmphdr* icmp =(struct icmphdr *)packet;
-		icmp->code=ICMP_ECHO;
-		icmp->type=8; //ECHO
+		CryptedData= CryptFunction(my_file_data_splitted);
+		printf("Velikost pri poslani %ld\n",strlen((char *)CryptedData));
+		printf("Length %lu\n",my_file_data.length());
+	
+		 
+		
 		memcpy(packet+sizeof(struct icmphdr),CryptedData,strlen((char*)CryptedData));
 
 		/*ssize_t sendto(int sockfd, const void *buf, size_t len, int flags,
@@ -296,9 +422,9 @@ int main(int argc, char **argv){
 			return 1;
 		}
 		std::cout << "Send packet \n";
-		std::cout << packet;
 	}
-	
+		
+	std::cout << "celkem bude packetu  "<<  pocetpacketu << '\n';
     return 0;
 	
 	}
