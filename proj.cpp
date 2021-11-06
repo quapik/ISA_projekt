@@ -45,8 +45,8 @@ unsigned char* DecryptFunction(unsigned char* input)
 {
 	AES_KEY decryptkey;
 	AES_set_decrypt_key((const unsigned char *)"xsimav01", 256, &decryptkey);
-	unsigned char input44[AES_BLOCK_SIZE];
-	unsigned char *output44 =(unsigned char *)calloc(AES_BLOCK_SIZE,1);
+	unsigned char input32[AES_BLOCK_SIZE];
+	unsigned char *output32 =(unsigned char *)calloc(AES_BLOCK_SIZE,1);
 	unsigned char *output = (unsigned char *)calloc(strlen((char *)input) +(AES_BLOCK_SIZE - (strlen((char *)input) % AES_BLOCK_SIZE)),1); //neblizsi nasobek
 	int i, j;
 	printf("%ld sizeof\n",strlen((char *)input));
@@ -54,13 +54,13 @@ unsigned char* DecryptFunction(unsigned char* input)
 	{
 		for (j=0; j < AES_BLOCK_SIZE; j++)
 		{
-			input44[j]=input[i+j];
+			input32[j]=input[i+j];
 		}
 		
-		AES_decrypt(input44,output44,&decryptkey);
+		AES_decrypt(input32,output32,&decryptkey);
 		for (j=0; j < AES_BLOCK_SIZE; j++)
 		{
-			output[i+j]=output44[j];
+			output[i+j]=output32[j];
 		}
 	
 	}
@@ -80,21 +80,21 @@ unsigned char* CryptFunction(std::string s){
 	{
         input[i] = s[i];
     }
-	unsigned char input44[AES_BLOCK_SIZE];
-	unsigned char *output44 =(unsigned char *)calloc(AES_BLOCK_SIZE,1);
+	unsigned char input32[AES_BLOCK_SIZE];
+	unsigned char *output32 =(unsigned char *)calloc(AES_BLOCK_SIZE,1);
 	unsigned char *output = (unsigned char *)calloc(inputlen +(AES_BLOCK_SIZE - (inputlen % AES_BLOCK_SIZE)),1); //neblizsi nasobek
 	
 	for (i = 0; i < sizeof(input); i=i+AES_BLOCK_SIZE) 
 	{
 		for (j=0; j < AES_BLOCK_SIZE; j++)
 		{
-			input44[j]=input[i+j];
+			input32[j]=input[i+j];
 		}
 		
-		AES_encrypt(input44,output44,&encryptkey);
+		AES_encrypt(input32,output32,&encryptkey);
 		for (j=0; j < AES_BLOCK_SIZE; j++)
 		{
-			output[i+j]=output44[j];
+			output[i+j]=output32[j];
 		}
 	
 	}
@@ -165,10 +165,13 @@ void mypcap_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
 					token = strtok(NULL, ";");
 					pocetfrompacket= atoi(token);
 					std::cout << pocetfrompacket << " Pocet packetu\n";
-					// otevrit (vytvorit soubor)
+					// otevrit (vytvorit soubor) a pak ho vypraznit (kvuli naslednemu appendovani)
 					fstream MyFile("ser_"+filenamefrompacket);
-					FileWasOopened=true;
 					MyFile.close();
+					FileWasOopened=true;
+					std::ofstream ofs;
+					ofs.open("ser_"+filenamefrompacket, std::ofstream::out | std::ofstream::trunc);
+					ofs.close();
 					return;
 					
 		}
@@ -176,15 +179,20 @@ void mypcap_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
 
 	if(FileWasOopened && pocetfrompacket>0)
 	{	
-		ofstream file_out;
-		file_out.open("ser_"+filenamefrompacket, std::ios_base::app);
-		file_out << data << endl;
-
-		pocetfrompacket--;
-		if (pocetfrompacket==0)
+		fstream myfile;
+   		myfile.open("ser_"+filenamefrompacket,ios::app);  // open a file to perform write operation using file object
+		if(myfile.is_open()) //checking whether the file is open
 		{
-			FileWasOopened=false;
+			myfile<<data << std::endl;   //inserting text
+			pocetfrompacket--;
+			if (pocetfrompacket==0)
+			{
+				FileWasOopened=false;
+			}
+			myfile.close();    //close the file object
 		}
+
+		
 
 
 
@@ -199,7 +207,7 @@ void mypcap_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
 
 
 int main(int argc, char **argv){
-	char *pom="google.com";
+	char *pom;
 	char *filename;
 	int rflag = 0;
   	int sflag = 0;
@@ -336,28 +344,22 @@ int main(int argc, char **argv){
 	}
 
 
-	ifstream my_file;
-	std::string my_file_data = "";
-	my_file.open(filename); // opens the file
-    if(!my_file) { // file couldn't be opened
-      printf("Error: file could not be opened\n");
-      exit(1);
-   	}
-	else {
-		char ch;
-		unsigned int counter=0;
-		while (1) {
-			my_file >> ch;
-			if (my_file.eof())
-				break;
-			
-			my_file_data.append(1,ch);
-			counter++;
-		}
-		
-				
-		}
-	my_file.close();
+
+	string my_file_data;
+
+	fstream myfile;
+      myfile.open(filename,ios::in);
+	  if (myfile.is_open()){   //checking whether the file is open
+      string tp;
+      while(getline(myfile, tp)){ //read data from file object and put it into string.
+         my_file_data.append(tp);
+      }
+      myfile.close(); //close the file object.
+	  }
+
+
+	
+
 	int pocetpacketu=0;
 	if (my_file_data.length() % 1430==0) { pocetpacketu=my_file_data.length() / 1430;}
 	else {pocetpacketu=my_file_data.length() / 1430 +1;}
