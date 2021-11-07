@@ -21,7 +21,6 @@
 using std::ifstream;
 using namespace std;
 int n = 0;
-#define SIZE_ETHERNET (14)   
 #define __FAVOR_BSD    
 
 //globalni promenne pro server
@@ -170,7 +169,7 @@ void mypcap_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
 					MyFile.close();
 					FileWasOopened=true;
 					std::ofstream ofs;
-					ofs.open("ser_"+filenamefrompacket, std::ofstream::out | std::ofstream::trunc);
+					ofs.open("ser_"+filenamefrompacket, std::ofstream::out | std::ofstream::trunc | ios::binary);
 					ofs.close();
 					return;
 					
@@ -180,7 +179,7 @@ void mypcap_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
 	if(FileWasOopened && pocetfrompacket>0)
 	{	
 		fstream myfile;
-   		myfile.open("ser_"+filenamefrompacket,ios::app);  // open a file to perform write operation using file object
+   		myfile.open("ser_"+filenamefrompacket,ios::app| ios::binary);  // open a file to perform write operation using file object
 		if(myfile.is_open()) //checking whether the file is open
 		{
 			myfile<<data << std::endl;   //inserting text
@@ -345,10 +344,9 @@ int main(int argc, char **argv){
 
 
 
-	string my_file_data;
-
-	fstream myfile;
-      myfile.open(filename,ios::in);
+	  string my_file_data;	
+	  fstream myfile;
+      myfile.open(filename,ios::in  | ios::binary);
 	  if (myfile.is_open()){   //checking whether the file is open
       string tp;
       while(getline(myfile, tp)){ //read data from file object and put it into string.
@@ -357,9 +355,24 @@ int main(int argc, char **argv){
       myfile.close(); //close the file object.
 	  }
 
+	   	char * buffer;
+		long size;
+		ifstream file (filename, ios::in|ios::binary|ios::ate);
+		size = file.tellg();
+		file.seekg (0, ios::beg);
+		buffer = new char [size];
+		file.read (buffer, size);
+		file.close();
+		cout << size << "VS" << my_file_data.length() << "\n";
+		cout << "the complete file is in a buffer\n";
+		for (long x= 0; x <size; x++){
+			cout << buffer[x];
+		}
+
+
 
 	
-
+	// Zjisteni v kolika packetech budou data poslany
 	int pocetpacketu=0;
 	if (my_file_data.length() % 1430==0) { pocetpacketu=my_file_data.length() / 1430;}
 	else {pocetpacketu=my_file_data.length() / 1430 +1;}
