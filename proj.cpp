@@ -40,73 +40,82 @@ void *get_in_addr(struct sockaddr *sa)
 	return &(((struct sockaddr_in6 *)sa)->sin6_addr);
 }
 
-unsigned char* DecryptFunction(unsigned char* input)
-{
+unsigned char* DecryptFunction(unsigned char* input,int size)
+{	
 	AES_KEY decryptkey;
-	AES_set_decrypt_key((const unsigned char *)"xsimav01", 256, &decryptkey);
-	unsigned char input32[AES_BLOCK_SIZE];
-	unsigned char *output32 =(unsigned char *)calloc(AES_BLOCK_SIZE,1);
-	unsigned char *output = (unsigned char *)calloc(strlen((char *)input) +(AES_BLOCK_SIZE - (strlen((char *)input) % AES_BLOCK_SIZE)),1); //neblizsi nasobek
-	int i, j;
-	printf("%ld sizeof\n",strlen((char *)input));
-	for (i = 0; i < strlen((char *)input); i=i+AES_BLOCK_SIZE) 
+	AES_set_decrypt_key((const unsigned char *)"xsimav01", 128, &decryptkey);
+	unsigned char *output32 =(unsigned char *)calloc(16,1);
+	unsigned char *output = (unsigned char *)malloc((size +(16 - size % 16))*sizeof(unsigned char *)); //neblizsi nasobek
+	cout << "size " << (size +(16 - size % 16))*sizeof(unsigned char *);
+	int i,j;
+	int counter = 0;
+	while (size > 0)
 	{
-		for (j=0; j < AES_BLOCK_SIZE; j++)
+		if (size > 16)
 		{
-			input32[j]=input[i+j];
+			unsigned char input32[16];
+			for (i=0; i<16; i++)
+			{
+				input32[i]=input[16*counter+i];
+			}
+			AES_decrypt(input32,output+16*counter,&decryptkey);
+			
+			size=size-16;
+			counter++;
 		}
-		
-		AES_decrypt(input32,output32,&decryptkey);
-		for (j=0; j < AES_BLOCK_SIZE; j++)
+		else
 		{
-			output[i+j]=output32[j];
+			unsigned char input32[size];
+			for (i=0; i<size; i++)
+			{
+				input32[i]=input[16*counter+i];
+			}
+			AES_decrypt(input32,output+16*counter,&decryptkey);
+			
+			size=0;
 		}
 	
 	}
+	
 	return output;
 
 }
-unsigned char* CryptFunction(std::string s){
+unsigned char* CryptFunction(char * input, long size){
 	
 	AES_KEY encryptkey;
-
-	AES_set_encrypt_key((const unsigned char *)"xsimav01", 256, &encryptkey); //AES_set_encrypt_key(const unsigned char *userKey, const int bits, AES_KEY *key);
-	
-	int inputlen = s.length();
-	unsigned char input[inputlen + 1];
-	int i, j;
-    for (i = 0; i < sizeof(input); i++) 
+	AES_set_encrypt_key((const unsigned char *)"xsimav01", 128, &encryptkey); //AES_set_encrypt_key(const unsigned char *userKey, const int bits, AES_KEY *key);
+	unsigned char *output = (unsigned char *)calloc((size +(16 - (size % 16)))*sizeof(unsigned char* ),1); //neblizsi nasobek
+	cout << "size " << size;
+	int i,j;
+	int counter = 0;
+	while (size > 0)
 	{
-        input[i] = s[i];
-    }
-	unsigned char input32[AES_BLOCK_SIZE];
-	unsigned char *output32 =(unsigned char *)calloc(AES_BLOCK_SIZE,1);
-	unsigned char *output = (unsigned char *)calloc(inputlen +(AES_BLOCK_SIZE - (inputlen % AES_BLOCK_SIZE)),1); //neblizsi nasobek
-	
-	for (i = 0; i < sizeof(input); i=i+AES_BLOCK_SIZE) 
-	{
-		for (j=0; j < AES_BLOCK_SIZE; j++)
+		if (size > 16)
 		{
-			input32[j]=input[i+j];
+			unsigned char input32[16];
+			for (i=0; i<16; i++)
+			{
+				input32[i]=input[16*counter+i];
+			}
+			AES_encrypt(input32,output+16*counter,&encryptkey);
+			
+			size=size-16;
+			counter++;
 		}
-		
-		AES_encrypt(input32,output32,&encryptkey);
-		for (j=0; j < AES_BLOCK_SIZE; j++)
+		else
 		{
-			output[i+j]=output32[j];
+			unsigned char input32[size];
+			for (i=0; i<size; i++)
+			{
+				input32[i]=input[16*counter+i];
+			}
+			AES_encrypt(input32,output+16*counter,&encryptkey);
+			
+			size=0;
 		}
 	
 	}
-	
-	
-	printf("Puvodni: %s\n",input);
-	printf("Sifrovano: %s\n",output);
-	/*for (unsigned i =0; i< AES_BLOCK_SIZE; i++)
-	{
-		printf("%X " ,output[i]);
-	}
-	*/
-
+	cout << "Sifrovan" << output;
 	return output;
 	}
 //--------------------------------
@@ -141,9 +150,12 @@ void mypcap_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
 	std::cout << std::to_string(icmp->type) << "\n";
 	std::cout << std::to_string(icmp->code) << "\n";
 	std::cout << data << "\n";
-	data=DecryptFunction(data);
+	int sizedata = ntohs(my_ip->ip_len) - 16 - 8 - 20;
+	data=DecryptFunction(data,sizedata);
+	
 	printf("Desifrovano: %s\n",data);
 	char checkfirst[8];
+	
 
 	
 
@@ -181,7 +193,7 @@ void mypcap_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
 		fstream myfile;
    		myfile.open("ser_"+filenamefrompacket,ios::app| ios::binary);  // open a file to perform write operation using file object
 		if(myfile.is_open()) //checking whether the file is open
-		{
+		{	
 			myfile<<data << std::endl;   //inserting text
 			pocetfrompacket--;
 			if (pocetfrompacket==0)
@@ -363,19 +375,21 @@ int main(int argc, char **argv){
 		buffer = new char [size];
 		file.read (buffer, size);
 		file.close();
-		cout << size << "VS" << my_file_data.length() << "\n";
+		/*cout << size << "VS" << my_file_data.length() << "\n";
 		cout << "the complete file is in a buffer\n";
 		for (long x= 0; x <size; x++){
 			cout << buffer[x];
-		}
+		}*/
+
+		
 
 
 
 	
 	// Zjisteni v kolika packetech budou data poslany
 	int pocetpacketu=0;
-	if (my_file_data.length() % 1430==0) { pocetpacketu=my_file_data.length() / 1430;}
-	else {pocetpacketu=my_file_data.length() / 1430 +1;}
+	if (size % 1430==0) { pocetpacketu=size / 1430;}
+	else {pocetpacketu=(size / 1430) +1;}
 
 	char packet[maxvelpacketu];
 	memset(&packet, 0,maxvelpacketu);
@@ -386,8 +400,13 @@ int main(int argc, char **argv){
 	firstpacketvalue.append(filename);
 	firstpacketvalue.append(";");
 	firstpacketvalue.append(std::to_string(pocetpacketu));
-	unsigned char* CryptedData= CryptFunction(firstpacketvalue);
+	cout << firstpacketvalue.length() << "delka  prvni\n"; 
+	char *cstr = new char[firstpacketvalue.length() + 1];
+	strcpy(cstr, firstpacketvalue.c_str());
+	// do stuff
 
+	unsigned char* CryptedData= CryptFunction(cstr,firstpacketvalue.length());
+	delete [] cstr;
 	memcpy(packet+sizeof(struct icmphdr),CryptedData,strlen((char*)CryptedData));
 
 		/*ssize_t sendto(int sockfd, const void *buf, size_t len, int flags,
@@ -405,23 +424,33 @@ int main(int argc, char **argv){
 	
 	//std::cout << s << "\n";
 	std::string my_file_data_splitted;
-	while(my_file_data!="")
+	long done = 0;
+	while (done < size)
 	{
 		
-		if (my_file_data.length()<maxvelpacketu)
-		{
-			my_file_data_splitted=my_file_data.substr(0,my_file_data.length());
-			my_file_data.erase(my_file_data.begin(),my_file_data.begin()+my_file_data.length());
-		}
-		else
-		{
-			my_file_data_splitted=my_file_data.substr(0,maxvelpacketu);
-			my_file_data.erase(my_file_data.begin(),my_file_data.begin()+maxvelpacketu);
-		}
+		
+		
+			long available;
+			if (1430 < (size-done)) {available=1430;}
+			else {available=size-done;}
 
-		CryptedData= CryptFunction(my_file_data_splitted);
-		printf("Velikost pri poslani %ld\n",strlen((char *)CryptedData));
-		printf("Length %lu\n",my_file_data.length());
+			char *buff1430 = (char * )malloc(sizeof(char) * available);
+			memcpy(buff1430, buffer + done, available);
+			done += available;
+			cout << available << "vavailible\n";
+			for (int j =0; j<available; j++)
+			{
+				cout << buff1430[j];
+			}
+			cout << "buff1430\n";
+			
+			CryptedData= CryptFunction(buff1430,available);
+			free(buff1430);
+			printf("Velikost pri poslani %ld\n",strlen((char *)CryptedData));
+			printf("Length %lu\n",my_file_data.length());
+			
+
+		
 	
 		 
 		
@@ -439,7 +468,7 @@ int main(int argc, char **argv){
 		std::cout << "Send packet \n";
 	}
 		
-	std::cout << "celkem bude packetu  "<<  pocetpacketu << '\n';
+	
     return 0;
 	
 	}
