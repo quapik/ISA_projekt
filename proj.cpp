@@ -44,9 +44,9 @@ unsigned char* DecryptFunction(unsigned char* input,int size)
 {	
 	AES_KEY decryptkey;
 	AES_set_decrypt_key((const unsigned char *)"xsimav01", 128, &decryptkey);
-	unsigned char *output32 =(unsigned char *)calloc(16,1);
-	unsigned char *output = (unsigned char *)malloc((size +(16 - size % 16))*sizeof(unsigned char *)); //neblizsi nasobek
-	cout << "size " << (size +(16 - size % 16))*sizeof(unsigned char *);
+	unsigned char *output = (unsigned char *)malloc(size*sizeof(unsigned char *)); //neblizsi nasobek
+	cout << "size decrypt puvodni " << size << "\n";
+	cout << "size decrypt zvetsena " << (size +(16 - size % 16)) << "\n";;
 	int i,j;
 	int counter = 0;
 	while (size > 0)
@@ -85,37 +85,43 @@ unsigned char* CryptFunction(char * input, long size){
 	AES_KEY encryptkey;
 	AES_set_encrypt_key((const unsigned char *)"xsimav01", 128, &encryptkey); //AES_set_encrypt_key(const unsigned char *userKey, const int bits, AES_KEY *key);
 	unsigned char *output = (unsigned char *)calloc((size +(16 - (size % 16)))*sizeof(unsigned char* ),1); //neblizsi nasobek
-	cout << "size " << size;
+	cout << "size input " << size << " size output" <<  size +(16 - (size % 16)) << "\n";
 	int i,j;
 	int counter = 0;
+	int pomsize=size;
 	while (size > 0)
 	{
 		if (size > 16)
 		{
-			unsigned char input32[16];
+			unsigned char* input32 = (unsigned char *)calloc(16*sizeof(unsigned char*),1);
 			for (i=0; i<16; i++)
 			{
 				input32[i]=input[16*counter+i];
 			}
 			AES_encrypt(input32,output+16*counter,&encryptkey);
-			
+			free(input32);
 			size=size-16;
 			counter++;
 		}
 		else
 		{
-			unsigned char input32[size];
+			unsigned char* input32 = (unsigned char *)calloc(size*sizeof(unsigned char*),1);
 			for (i=0; i<size; i++)
 			{
 				input32[i]=input[16*counter+i];
 			}
 			AES_encrypt(input32,output+16*counter,&encryptkey);
-			
+			free(input32);
 			size=0;
 		}
 	
 	}
-	cout << "Sifrovan" << output;
+	/*cout << "sifrovano\n";
+	for (int p = 0; p < pomsize +(16 - (pomsize % 16)); p++)
+	{
+		cout << output[p];
+	}*/
+
 	return output;
 	}
 //--------------------------------
@@ -147,20 +153,18 @@ void mypcap_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
 	std::string dst = inet_ntoa(my_ip->ip_dst);
 	std::cout << src << "\n";
 	std::cout << dst << "\n";
-	std::cout << std::to_string(icmp->type) << "\n";
-	std::cout << std::to_string(icmp->code) << "\n";
-	std::cout << data << "\n";
+	//std::cout << data << "\n";
 	int sizedata = ntohs(my_ip->ip_len) - 16 - 8 - 20;
 	data=DecryptFunction(data,sizedata);
 	
-	printf("Desifrovano: %s\n",data);
+	//printf("Desifrovano: %s\n",data);
 	char checkfirst[8];
 	
 
 	
 
 
-	//kontrola zda se se jedna o prvni packet
+	// Kontrola zda se se jedna o prvni packet
 	if (strlen((char*)data)>7  && strlen((char*)data)<100)
 	{
 		for (int i=0; i<8; i++){
@@ -176,45 +180,34 @@ void mypcap_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
 					token = strtok(NULL, ";");
 					pocetfrompacket= atoi(token);
 					std::cout << pocetfrompacket << " Pocet packetu\n";
+
 					// otevrit (vytvorit soubor) a pak ho vypraznit (kvuli naslednemu appendovani)
-					fstream MyFile("ser_"+filenamefrompacket);
-					MyFile.close();
-					FileWasOopened=true;
-					std::ofstream ofs;
-					ofs.open("ser_"+filenamefrompacket, std::ofstream::out | std::ofstream::trunc | ios::binary);
-					ofs.close();
+					fstream myfilecreate("ser_"+filenamefrompacket);
+					myfilecreate.close();
+					std::ofstream myfileempty; //TODO SER!!
+					myfileempty.open("ser_"+filenamefrompacket, std::ofstream::out | std::ofstream::trunc | ios::binary);
+					myfileempty.close();
+					cout << filenamefrompacket << "\n";
 					return;
 					
 		}
 	}
-
-	if(FileWasOopened && pocetfrompacket>0)
+	// Pokud jsou jeste nejake pakety ktere maji prijit, zapiseou data z tohoto packetu do fouboru
+	if(pocetfrompacket>0)
 	{	
-		fstream myfile;
-   		myfile.open("ser_"+filenamefrompacket,ios::app| ios::binary);  // open a file to perform write operation using file object
-		if(myfile.is_open()) //checking whether the file is open
+		fstream myfilewrite; //TODO SER!!!
+   		myfilewrite.open("ser_"+filenamefrompacket,ios::app| ios::binary);  
+		if(myfilewrite.is_open()) 
 		{	
-			myfile<<data << std::endl;   //inserting text
-			pocetfrompacket--;
-			if (pocetfrompacket==0)
-			{
-				FileWasOopened=false;
-			}
-			myfile.close();    //close the file object
+			myfilewrite<<data;  
+			
+			myfilewrite.close();   
+			
 		}
-
+		pocetfrompacket--;
 		
-
-
-
 	}
-	
-	
-  
-
-  
 }
-
 
 
 int main(int argc, char **argv){
@@ -335,7 +328,7 @@ int main(int argc, char **argv){
 
 
 	int protocol;
-	int maxvelpacketu=1430; //ipv4 (1500-20(ipv4 hlavicka)-8(sizeof icmph)-32)
+	int maxvelpacketu=1420; //ipv4 (1500-20(ipv4 hlavicka)-8(sizeof icmph)-16)
 	if (res->ai_family == AF_INET) //nastaveni protokolu na zaklade family
 		{
 			protocol = IPPROTO_ICMP;
@@ -353,24 +346,16 @@ int main(int argc, char **argv){
 		fprintf(stderr,"Chyba pri vytvareni socketu\n");
 		return 1;
 	}
-
-
-
-	  string my_file_data;	
-	  fstream myfile;
-      myfile.open(filename,ios::in  | ios::binary);
-	  if (myfile.is_open()){   //checking whether the file is open
-      string tp;
-      while(getline(myfile, tp)){ //read data from file object and put it into string.
-         my_file_data.append(tp);
-      }
-      myfile.close(); //close the file object.
-	  }
-
+		// Otevření zadaného souboru a načtení jeho dat do bufferu
 	   	char * buffer;
 		long size;
 		ifstream file (filename, ios::in|ios::binary|ios::ate);
-		size = file.tellg();
+		if (file.fail())
+			{
+				std::cerr << "Neexistující soubor pro poslání" << std::endl;
+				return 1;
+			}
+		size = file.tellg(); //velikost dat (v bytech)
 		file.seekg (0, ios::beg);
 		buffer = new char [size];
 		file.read (buffer, size);
@@ -381,29 +366,28 @@ int main(int argc, char **argv){
 			cout << buffer[x];
 		}*/
 
-		
-
-
-
 	
 	// Zjisteni v kolika packetech budou data poslany
 	int pocetpacketu=0;
-	if (size % 1430==0) { pocetpacketu=size / 1430;}
-	else {pocetpacketu=(size / 1430) +1;}
+	if (size % maxvelpacketu==0) { pocetpacketu=size / maxvelpacketu;}
+	else {pocetpacketu=(size / maxvelpacketu) +1;}
 
 	char packet[maxvelpacketu];
 	memset(&packet, 0,maxvelpacketu);
 	struct icmphdr* icmp =(struct icmphdr *)packet;
 	icmp->code=ICMP_ECHO;
 	icmp->type=8; //ECHO
+
+	// Vytvareni prvniho packetu ktery bude obsahovat nazev souboru a pocet packetu
 	std::string firstpacketvalue = "FILENAME;";
-	firstpacketvalue.append(filename);
+	std::string filename_string(filename);
+	std::string base_filename = filename_string.substr(filename_string.find_last_of("/\\") + 1);
+	firstpacketvalue.append(base_filename );
 	firstpacketvalue.append(";");
 	firstpacketvalue.append(std::to_string(pocetpacketu));
-	cout << firstpacketvalue.length() << "delka  prvni\n"; 
+
 	char *cstr = new char[firstpacketvalue.length() + 1];
 	strcpy(cstr, firstpacketvalue.c_str());
-	// do stuff
 
 	unsigned char* CryptedData= CryptFunction(cstr,firstpacketvalue.length());
 	delete [] cstr;
@@ -412,12 +396,13 @@ int main(int argc, char **argv){
 		/*ssize_t sendto(int sockfd, const void *buf, size_t len, int flags,
 				const struct sockaddr *dest_addr, socklen_t addrlen);
 				*/
-
+		
 		if (sendto(mysocket,packet,sizeof(struct icmp)+strlen((char*)CryptedData),0,res->ai_addr,res->ai_addrlen) <=1)
 		{
-			fprintf(stderr,"Chyba pri posilani"); //Locally detected errors are indicated by a return value of -1.
+			fprintf(stderr,"Chyba pri posilani uvodniho packetu"); //Locally detected errors are indicated by a return value of -1.
 			return 1;
 		}
+	
 		std::cout << "Send packet \n";
 
 	
@@ -427,44 +412,35 @@ int main(int argc, char **argv){
 	long done = 0;
 	while (done < size)
 	{
-		
-		
-		
 			long available;
-			if (1430 < (size-done)) {available=1430;}
+			if (maxvelpacketu < (size-done)) {available=maxvelpacketu;}
 			else {available=size-done;}
 
 			char *buff1430 = (char * )malloc(sizeof(char) * available);
 			memcpy(buff1430, buffer + done, available);
 			done += available;
 			cout << available << "vavailible\n";
-			for (int j =0; j<available; j++)
+			/*for (int j =0; j<available; j++)
 			{
 				cout << buff1430[j];
-			}
+			}*/
 			cout << "buff1430\n";
 			
 			CryptedData= CryptFunction(buff1430,available);
 			free(buff1430);
-			printf("Velikost pri poslani %ld\n",strlen((char *)CryptedData));
-			printf("Length %lu\n",my_file_data.length());
-			
-
-		
-	
-		 
-		
-		memcpy(packet+sizeof(struct icmphdr),CryptedData,strlen((char*)CryptedData));
+					 
+		memcpy(packet+sizeof(struct icmphdr),CryptedData,available+(16 - (available% 16)));
 
 		/*ssize_t sendto(int sockfd, const void *buf, size_t len, int flags,
 				const struct sockaddr *dest_addr, socklen_t addrlen);
 				*/
 
-		if (sendto(mysocket,packet,sizeof(struct icmp)+strlen((char*)CryptedData),0,res->ai_addr,res->ai_addrlen) <=1)
+		if (sendto(mysocket,packet,sizeof(struct icmp)+available+(16 - (available% 16)),0,res->ai_addr,res->ai_addrlen) <=1)
 		{
 			fprintf(stderr,"Chyba pri posilani"); //Locally detected errors are indicated by a return value of -1.
 			return 1;
 		}
+			//usleep(1);
 		std::cout << "Send packet \n";
 	}
 		
