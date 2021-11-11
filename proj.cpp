@@ -20,63 +20,55 @@
 
 using std::ifstream;
 using namespace std;
-int n = 0;
+long n = 0;
 #define __FAVOR_BSD    
 
 //globalni promenne pro server
 bool FileWasOopened=false;
-int pocetfrompacket=0;
+long pocetfrompacket=0;
 std::string filenamefrompacket;
 
-
-
-void *get_in_addr(struct sockaddr *sa)
-{
-	if (sa->sa_family == AF_INET)
-	{	
-
-		return &(((struct sockaddr_in *)sa)->sin_addr);
-	}
-	return &(((struct sockaddr_in6 *)sa)->sin6_addr);
+//https://github.com/thlorenz/beejs-guide-to-network-samples/blob/master/lib/get_in_addr.c
+void *get_in_addr(struct sockaddr *sa) {
+  return sa->sa_family == AF_INET
+    ? (void *) &(((struct sockaddr_in*)sa)->sin_addr)
+    : (void *) &(((struct sockaddr_in6*)sa)->sin6_addr);
 }
 
 unsigned char* DecryptFunction(unsigned char* input,int size)
 {	
 	AES_KEY decryptkey;
 	AES_set_decrypt_key((const unsigned char *)"xsimav01", 128, &decryptkey);
-	unsigned char *output = (unsigned char *)malloc(size*sizeof(unsigned char *)); //neblizsi nasobek
-	cout << "size decrypt puvodni " << size << "\n";
-	cout << "size decrypt zvetsena " << (size +(16 - size % 16)) << "\n";;
+	unsigned char *output = (unsigned char *)calloc((size +(16 - (size % 16)))*sizeof(unsigned char* ),1);
 	int i,j;
 	int counter = 0;
 	while (size > 0)
 	{
 		if (size > 16)
 		{
-			unsigned char input32[16];
+			unsigned char* input16 = (unsigned char *)calloc(16*sizeof(unsigned char*),1);
 			for (i=0; i<16; i++)
 			{
-				input32[i]=input[16*counter+i];
+				input16[i]=input[16*counter+i];
 			}
-			AES_decrypt(input32,output+16*counter,&decryptkey);
-			
+			AES_decrypt(input16,output+16*counter,&decryptkey);
+			free(input16);
 			size=size-16;
 			counter++;
 		}
 		else
 		{
-			unsigned char input32[size];
+			unsigned char* input16 = (unsigned char *)calloc(size*sizeof(unsigned char*),1);
 			for (i=0; i<size; i++)
 			{
-				input32[i]=input[16*counter+i];
+				input16[i]=input[16*counter+i];
 			}
-			AES_decrypt(input32,output+16*counter,&decryptkey);
-			
+			AES_decrypt(input16,output+16*counter,&decryptkey);
+			free(input16);
 			size=0;
 		}
 	
 	}
-	
 	return output;
 
 }
@@ -85,33 +77,33 @@ unsigned char* CryptFunction(char * input, long size){
 	AES_KEY encryptkey;
 	AES_set_encrypt_key((const unsigned char *)"xsimav01", 128, &encryptkey); //AES_set_encrypt_key(const unsigned char *userKey, const int bits, AES_KEY *key);
 	unsigned char *output = (unsigned char *)calloc((size +(16 - (size % 16)))*sizeof(unsigned char* ),1); //neblizsi nasobek
-	cout << "size input " << size << " size output" <<  size +(16 - (size % 16)) << "\n";
-	int i,j;
+	//cout << "size input " << size << " size output" <<  size +(16 - (size % 16)) << "\n";
+	int i;
 	int counter = 0;
 	int pomsize=size;
 	while (size > 0)
 	{
 		if (size > 16)
 		{
-			unsigned char* input32 = (unsigned char *)calloc(16*sizeof(unsigned char*),1);
+			unsigned char* input16 = (unsigned char *)calloc(16*sizeof(unsigned char*),1);
 			for (i=0; i<16; i++)
 			{
-				input32[i]=input[16*counter+i];
+				input16[i]=input[16*counter+i];
 			}
-			AES_encrypt(input32,output+16*counter,&encryptkey);
-			free(input32);
+			AES_encrypt(input16,output+16*counter,&encryptkey);
+			free(input16);
 			size=size-16;
 			counter++;
 		}
 		else
 		{
-			unsigned char* input32 = (unsigned char *)calloc(size*sizeof(unsigned char*),1);
+			unsigned char* input16 = (unsigned char *)calloc(size*sizeof(unsigned char*),1);
 			for (i=0; i<size; i++)
 			{
-				input32[i]=input[16*counter+i];
+				input16[i]=input[16*counter+i];
 			}
-			AES_encrypt(input32,output+16*counter,&encryptkey);
-			free(input32);
+			AES_encrypt(input16,output+16*counter,&encryptkey);
+			free(input16);
 			size=0;
 		}
 	
@@ -129,30 +121,23 @@ unsigned char* CryptFunction(char * input, long size){
 void mypcap_handler(u_char *args, const struct pcap_pkthdr *header, const u_char *packet)
 {
   struct ip *my_ip;               // pointer to the beginning of IP header
-  struct ether_header *eptr;      // pointer to the beginning of Ethernet header
-  const struct tcphdr *my_tcp;    // pointer to the beginning of TCP header
-  const struct udphdr *my_udp;    // pointer to the beginning of UDP header
   u_int size_ip;
   n++;
-  printf("Packet no. %d:\n",n);
-  printf("\tLength %d, received at %s",header->len,ctime((const time_t*)&header->ts.tv_sec));  
-  eptr = (struct ether_header *) packet+2;
-  printf("\tSource MAC: %s\n",ether_ntoa((const struct ether_addr *)&eptr->ether_shost)) ;
-  printf("\tDestination MAC: %s\n",ether_ntoa((const struct ether_addr *)&eptr->ether_dhost));
+  //printf("Packet no. %d:\n",n);
+  //printf("\tLength %d, received at %s",header->len,ctime((const time_t*)&header->ts.tv_sec));  
+//printf("\tSource MAC: %s\n",ether_ntoa((const struct ether_addr *)&eptr->ether_shost)) ;
+ //printf("\tDestination MAC: %s\n",ether_ntoa((const struct ether_addr *)&eptr->ether_dhost));
 
 
 
-    my_ip = (struct ip*) (packet+16);        // skip Ethernet header
-    size_ip = my_ip->ip_hl*4;                           // length of IP header
+    my_ip = (struct ip*) (packet+16);        //  uvodniho linuxuvskeho bordelu
 	struct icmphdr *icmp = (struct icmphdr *)(packet+16+20);
 	unsigned char *data=(u_char*)(packet+16+20+8);	
 
 
-    printf("\tIP: id 0x%x, hlen %d bytes, version %d, total length %d bytes, TTL %d\n",ntohs(my_ip->ip_id),size_ip,my_ip->ip_v,ntohs(my_ip->ip_len),my_ip->ip_ttl);
-    std::string src = inet_ntoa(my_ip->ip_src);
-	std::string dst = inet_ntoa(my_ip->ip_dst);
-	std::cout << src << "\n";
-	std::cout << dst << "\n";
+    //printf("\tIP: id 0x%x, hlen %d bytes, version %d, total length %d bytes, TTL %d\n",ntohs(my_ip->ip_id),size_ip,my_ip->ip_v,ntohs(my_ip->ip_len),my_ip->ip_ttl);
+    //std::string src = inet_ntoa(my_ip->ip_src);
+	//std::string dst = inet_ntoa(my_ip->ip_dst);
 	//std::cout << data << "\n";
 	int sizedata = ntohs(my_ip->ip_len) - 16 - 8 - 20;
 	data=DecryptFunction(data,sizedata);
@@ -182,10 +167,10 @@ void mypcap_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
 					std::cout << pocetfrompacket << " Pocet packetu\n";
 
 					// otevrit (vytvorit soubor) a pak ho vypraznit (kvuli naslednemu appendovani)
-					fstream myfilecreate("ser_"+filenamefrompacket);
+					fstream myfilecreate(filenamefrompacket);
 					myfilecreate.close();
-					std::ofstream myfileempty; //TODO SER!!
-					myfileempty.open("ser_"+filenamefrompacket, std::ofstream::out | std::ofstream::trunc | ios::binary);
+					std::ofstream myfileempty; 
+					myfileempty.open(filenamefrompacket, std::ofstream::out | std::ofstream::trunc | ios::binary);
 					myfileempty.close();
 					cout << filenamefrompacket << "\n";
 					return;
@@ -195,14 +180,13 @@ void mypcap_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
 	// Pokud jsou jeste nejake pakety ktere maji prijit, zapiseou data z tohoto packetu do fouboru
 	if(pocetfrompacket>0)
 	{	
-		fstream myfilewrite; //TODO SER!!!
-   		myfilewrite.open("ser_"+filenamefrompacket,ios::app| ios::binary);  
+		ofstream myfilewrite; 
+   		myfilewrite.open(filenamefrompacket,ios::app| ios::out |ios::binary);  
 		if(myfilewrite.is_open()) 
 		{	
-			myfilewrite<<data;  
-			
-			myfilewrite.close();   
-			
+			sizedata =  sizedata +(16 - (sizedata % 16));
+			myfilewrite.write((char * )data,sizedata);  
+			myfilewrite.close();
 		}
 		pocetfrompacket--;
 		
@@ -247,50 +231,20 @@ int main(int argc, char **argv){
 	}
 
 	if (lflag) {
-		printf("SERVER\n");
-		char *devname;    
 		char errbuf[PCAP_ERRBUF_SIZE];
 		pcap_t *handle;                 // packet capture handle 
-		pcap_if_t *alldev, *dev ;       // a list of all input devices
-		struct in_addr a,b;
 		bpf_u_int32 netaddr;            // network address configured at the input device
-		bpf_u_int32 mask;               // network mask of the input device
 		struct bpf_program fp;          // the compiled filter
 
-		// open the input devices (interfaces) to sniff data
-		if (pcap_findalldevs(&alldev, errbuf))
-		{
-			printf("Can't open input device(s)");
-		}
-    	
-
-		// list the available input devices
-		printf("Available input devices are: ");
-		for (dev = alldev; dev != NULL; dev = dev->next){
-			printf("%s ",dev->name);
-		}
-		printf("\n");
-		devname = alldev->name;
-		printf("Selected devname: %s\n",devname);
-
-		 // get IP address and mask of the sniffing interface
-		if (pcap_lookupnet(NULL,&netaddr,&mask,errbuf) == -1)
-			printf("pcap_lookupnet() failed");
-
-		a.s_addr=netaddr;
-		printf("Opening interface \"%s\" with net address %s,",devname,inet_ntoa(a));
-		b.s_addr=mask;
-		printf("mask %s for listening...\n",inet_ntoa(b));
-
-				// open the interface for live sniffing
+		//Otevreni any rozhrani (kvulo loopbacku)
 		if ((handle = pcap_open_live("any",BUFSIZ,1,1000,errbuf)) == NULL)
 			printf("pcap_open_live() failed");
 		
-		// compile the filter
+		//Icmp or icmp6 filtr
 		if (pcap_compile(handle,&fp,"icmp or icmp6",0,netaddr) == -1)
 			printf("pcap_compile() failed");
 		
-		// set the filter to the packet capture handle
+		// Nastavení filtrů a následný loop pro zachytávání paketů
 		if (pcap_setfilter(handle,&fp) == -1)
 			printf("pcap_setfilter() failed");
 
@@ -298,7 +252,6 @@ int main(int argc, char **argv){
    			printf("pcap_loop() failed");
 		
 		pcap_close(handle);
-		pcap_freealldevs(alldev);
 		return 0;
 			}
 
@@ -368,7 +321,7 @@ int main(int argc, char **argv){
 
 	
 	// Zjisteni v kolika packetech budou data poslany
-	int pocetpacketu=0;
+	long pocetpacketu=0;
 	if (size % maxvelpacketu==0) { pocetpacketu=size / maxvelpacketu;}
 	else {pocetpacketu=(size / maxvelpacketu) +1;}
 
@@ -385,7 +338,7 @@ int main(int argc, char **argv){
 	firstpacketvalue.append(base_filename );
 	firstpacketvalue.append(";");
 	firstpacketvalue.append(std::to_string(pocetpacketu));
-
+	cout << firstpacketvalue << "First packet value \n";
 	char *cstr = new char[firstpacketvalue.length() + 1];
 	strcpy(cstr, firstpacketvalue.c_str());
 
@@ -403,12 +356,8 @@ int main(int argc, char **argv){
 			return 1;
 		}
 	
-		std::cout << "Send packet \n";
+		//std::cout << "Send packet \n";
 
-	
-	
-	//std::cout << s << "\n";
-	std::string my_file_data_splitted;
 	long done = 0;
 	while (done < size)
 	{
@@ -418,14 +367,7 @@ int main(int argc, char **argv){
 
 			char *buff1430 = (char * )malloc(sizeof(char) * available);
 			memcpy(buff1430, buffer + done, available);
-			done += available;
-			cout << available << "vavailible\n";
-			/*for (int j =0; j<available; j++)
-			{
-				cout << buff1430[j];
-			}*/
-			cout << "buff1430\n";
-			
+			done += available;		
 			CryptedData= CryptFunction(buff1430,available);
 			free(buff1430);
 					 
@@ -440,13 +382,9 @@ int main(int argc, char **argv){
 			fprintf(stderr,"Chyba pri posilani"); //Locally detected errors are indicated by a return value of -1.
 			return 1;
 		}
-			//usleep(1);
-		std::cout << "Send packet \n";
+		//std::cout << "Send packet \n";
 	}
-		
-	
     return 0;
-	
 	}
 	
 }
