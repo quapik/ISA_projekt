@@ -26,6 +26,7 @@ long n = 0;
 //globalni promenne pro server
 bool FileWasOopened=false;
 long pocetfrompacket=0;
+int velikostposlednihopaketu=0;
 std::string filenamefrompacket;
 
 //https://github.com/thlorenz/beejs-guide-to-network-samples/blob/master/lib/get_in_addr.c
@@ -73,7 +74,7 @@ unsigned char* DecryptFunction(unsigned char* input,int size)
 
 }
 unsigned char* CryptFunction(char * input, long size){
-	
+	cout << size << "velikost klient \n";
 	AES_KEY encryptkey;
 	AES_set_encrypt_key((const unsigned char *)"xsimav01", 128, &encryptkey); //AES_set_encrypt_key(const unsigned char *userKey, const int bits, AES_KEY *key);
 	unsigned char *output = (unsigned char *)calloc((size +(16 - (size % 16)))*sizeof(unsigned char* ),1); //neblizsi nasobek
@@ -123,6 +124,7 @@ void mypcap_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
   struct ip *my_ip;               // pointer to the beginning of IP header
   u_int size_ip;
   n++;
+  
   //printf("Packet no. %d:\n",n);
   //printf("\tLength %d, received at %s",header->len,ctime((const time_t*)&header->ts.tv_sec));  
 //printf("\tSource MAC: %s\n",ether_ntoa((const struct ether_addr *)&eptr->ether_shost)) ;
@@ -140,6 +142,7 @@ void mypcap_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
 	//std::string dst = inet_ntoa(my_ip->ip_dst);
 	//std::cout << data << "\n";
 	int sizedata = ntohs(my_ip->ip_len) - 16 - 8 - 20;
+	cout << sizedata << "velikost server \n"; 
 	data=DecryptFunction(data,sizedata);
 	
 	//printf("Desifrovano: %s\n",data);
@@ -164,7 +167,11 @@ void mypcap_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
 					std::cout << filenamefrompacket << " Filename from packet\n";
 					token = strtok(NULL, ";");
 					pocetfrompacket= atoi(token);
+					token = strtok(NULL, ";");
+					velikostposlednihopaketu= atoi(token);
 					std::cout << pocetfrompacket << " Pocet packetu\n";
+					std::cout << velikostposlednihopaketu<< " Velikost posledniho packetu\n";
+
 
 					// otevrit (vytvorit soubor) a pak ho vypraznit (kvuli naslednemu appendovani)
 					fstream myfilecreate(filenamefrompacket);
@@ -184,8 +191,19 @@ void mypcap_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
    		myfilewrite.open(filenamefrompacket,ios::app| ios::out |ios::binary);  
 		if(myfilewrite.is_open()) 
 		{	
-			sizedata =  sizedata +(16 - (sizedata % 16));
-			myfilewrite.write((char * )data,sizedata);  
+			if(pocetfrompacket==1) 
+			{	cout << velikostposlednihopaketu << "  check velukost\n";
+				sizedata=velikostposlednihopaketu;
+				myfilewrite.write((char * )data,sizedata);
+			}
+			else
+			{
+				cout <<  "writefulll\n " << pocetfrompacket << "  pocet from packet\n";
+				sizedata=1424;
+				myfilewrite.write((char * )data,sizedata);
+
+			}
+			  
 			myfilewrite.close();
 		}
 		pocetfrompacket--;
@@ -281,7 +299,7 @@ int main(int argc, char **argv){
 
 
 	int protocol;
-	int maxvelpacketu=1420; //ipv4 (1500-20(ipv4 hlavicka)-8(sizeof icmph)-16)
+	int maxvelpacketu=1424; //ipv4 (1500-20(ipv4 hlavicka)-8(sizeof icmph)-16)
 	if (res->ai_family == AF_INET) //nastaveni protokolu na zaklade family
 		{
 			protocol = IPPROTO_ICMP;
@@ -338,6 +356,8 @@ int main(int argc, char **argv){
 	firstpacketvalue.append(base_filename );
 	firstpacketvalue.append(";");
 	firstpacketvalue.append(std::to_string(pocetpacketu));
+	firstpacketvalue.append(";");
+	firstpacketvalue.append(std::to_string(size%1424));
 	cout << firstpacketvalue << "First packet value \n";
 	char *cstr = new char[firstpacketvalue.length() + 1];
 	strcpy(cstr, firstpacketvalue.c_str());
