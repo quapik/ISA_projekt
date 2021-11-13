@@ -74,7 +74,7 @@ unsigned char* DecryptFunction(unsigned char* input,int size)
 
 }
 unsigned char* CryptFunction(char * input, long size){
-	cout << size << "velikost klient \n";
+	//cout << size << "velikost klient \n";
 	AES_KEY encryptkey;
 	AES_set_encrypt_key((const unsigned char *)"xsimav01", 128, &encryptkey); //AES_set_encrypt_key(const unsigned char *userKey, const int bits, AES_KEY *key);
 	unsigned char *output = (unsigned char *)calloc((size +(16 - (size % 16)))*sizeof(unsigned char* ),1); //neblizsi nasobek
@@ -142,7 +142,7 @@ void mypcap_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
 	//std::string dst = inet_ntoa(my_ip->ip_dst);
 	//std::cout << data << "\n";
 	int sizedata = ntohs(my_ip->ip_len) - 16 - 8 - 20;
-	cout << sizedata << "velikost server \n"; 
+	//cout << sizedata << "velikost server \n"; 
 	data=DecryptFunction(data,sizedata);
 	
 	//printf("Desifrovano: %s\n",data);
@@ -192,13 +192,13 @@ void mypcap_handler(u_char *args, const struct pcap_pkthdr *header, const u_char
 		if(myfilewrite.is_open()) 
 		{	
 			if(pocetfrompacket==1) 
-			{	cout << velikostposlednihopaketu << "  check velukost\n";
+			{	//cout << velikostposlednihopaketu << "  check velukost\n";
 				sizedata=velikostposlednihopaketu;
 				myfilewrite.write((char * )data,sizedata);
 			}
 			else
 			{
-				cout <<  "writefulll\n " << pocetfrompacket << "  pocet from packet\n";
+				//cout <<  "writefulll\n " << pocetfrompacket << "  pocet from packet\n";
 				sizedata=1424;
 				myfilewrite.write((char * )data,sizedata);
 
