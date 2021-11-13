@@ -22,7 +22,7 @@ using std::ifstream;
 using namespace std;
 long n = 0;
 #define __FAVOR_BSD    
-
+int bytusifrovano=16;
 //globalni promenne pro server
 bool FileWasOopened=false;
 long pocetfrompacket=0;
@@ -40,21 +40,21 @@ unsigned char* DecryptFunction(unsigned char* input,int size)
 {	
 	AES_KEY decryptkey;
 	AES_set_decrypt_key((const unsigned char *)"xsimav01", 128, &decryptkey);
-	unsigned char *output = (unsigned char *)calloc((size +(16 - (size % 16)))*sizeof(unsigned char* ),1);
+	unsigned char *output = (unsigned char *)calloc((size +(bytusifrovano - (size % bytusifrovano)))*sizeof(unsigned char* ),1);
 	int i,j;
 	int counter = 0;
 	while (size > 0)
 	{
-		if (size > 16)
+		if (size > bytusifrovano)
 		{
-			unsigned char* input16 = (unsigned char *)calloc(16*sizeof(unsigned char*),1);
-			for (i=0; i<16; i++)
+			unsigned char* input16 = (unsigned char *)calloc(bytusifrovano*sizeof(unsigned char*),1);
+			for (i=0; i<bytusifrovano; i++)
 			{
-				input16[i]=input[16*counter+i];
+				input16[i]=input[bytusifrovano*counter+i];
 			}
-			AES_decrypt(input16,output+16*counter,&decryptkey);
+			AES_decrypt(input16,output+bytusifrovano*counter,&decryptkey);
 			free(input16);
-			size=size-16;
+			size=size-bytusifrovano;
 			counter++;
 		}
 		else
@@ -62,9 +62,9 @@ unsigned char* DecryptFunction(unsigned char* input,int size)
 			unsigned char* input16 = (unsigned char *)calloc(size*sizeof(unsigned char*),1);
 			for (i=0; i<size; i++)
 			{
-				input16[i]=input[16*counter+i];
+				input16[i]=input[bytusifrovano*counter+i];
 			}
-			AES_decrypt(input16,output+16*counter,&decryptkey);
+			AES_decrypt(input16,output+bytusifrovano*counter,&decryptkey);
 			free(input16);
 			size=0;
 		}
@@ -77,23 +77,23 @@ unsigned char* CryptFunction(char * input, long size){
 	//cout << size << "velikost klient \n";
 	AES_KEY encryptkey;
 	AES_set_encrypt_key((const unsigned char *)"xsimav01", 128, &encryptkey); //AES_set_encrypt_key(const unsigned char *userKey, const int bits, AES_KEY *key);
-	unsigned char *output = (unsigned char *)calloc((size +(16 - (size % 16)))*sizeof(unsigned char* ),1); //neblizsi nasobek
+	unsigned char *output = (unsigned char *)calloc((size +(bytusifrovano - (size % bytusifrovano)))*sizeof(unsigned char* ),1); //neblizsi nasobek
 	//cout << "size input " << size << " size output" <<  size +(16 - (size % 16)) << "\n";
 	int i;
 	int counter = 0;
 	int pomsize=size;
 	while (size > 0)
 	{
-		if (size > 16)
+		if (size > bytusifrovano)
 		{
-			unsigned char* input16 = (unsigned char *)calloc(16*sizeof(unsigned char*),1);
-			for (i=0; i<16; i++)
+			unsigned char* input16 = (unsigned char *)calloc(bytusifrovano*sizeof(unsigned char*),1);
+			for (i=0; i<bytusifrovano; i++)
 			{
-				input16[i]=input[16*counter+i];
+				input16[i]=input[bytusifrovano*counter+i];
 			}
-			AES_encrypt(input16,output+16*counter,&encryptkey);
+			AES_encrypt(input16,output+bytusifrovano*counter,&encryptkey);
 			free(input16);
-			size=size-16;
+			size=size-bytusifrovano;
 			counter++;
 		}
 		else
@@ -101,9 +101,9 @@ unsigned char* CryptFunction(char * input, long size){
 			unsigned char* input16 = (unsigned char *)calloc(size*sizeof(unsigned char*),1);
 			for (i=0; i<size; i++)
 			{
-				input16[i]=input[16*counter+i];
+				input16[i]=input[bytusifrovano*counter+i];
 			}
-			AES_encrypt(input16,output+16*counter,&encryptkey);
+			AES_encrypt(input16,output+bytusifrovano*counter,&encryptkey);
 			free(input16);
 			size=0;
 		}
@@ -363,14 +363,16 @@ int main(int argc, char **argv){
 	strcpy(cstr, firstpacketvalue.c_str());
 
 	unsigned char* CryptedData= CryptFunction(cstr,firstpacketvalue.length());
+	cout << firstpacketvalue.length() << "lenght\n";
+	cout << (firstpacketvalue.length() +(bytusifrovano - (firstpacketvalue.length()  % bytusifrovano))) << "strlen\n";
 	delete [] cstr;
-	memcpy(packet+sizeof(struct icmphdr),CryptedData,strlen((char*)CryptedData));
+	memcpy(packet+sizeof(struct icmphdr),CryptedData,(firstpacketvalue.length() +(bytusifrovano - (firstpacketvalue.length()  % bytusifrovano))));
 
 		/*ssize_t sendto(int sockfd, const void *buf, size_t len, int flags,
 				const struct sockaddr *dest_addr, socklen_t addrlen);
 				*/
 		
-		if (sendto(mysocket,packet,sizeof(struct icmp)+strlen((char*)CryptedData),0,res->ai_addr,res->ai_addrlen) <=1)
+		if (sendto(mysocket,packet,sizeof(struct icmp)+(firstpacketvalue.length() +(bytusifrovano - (firstpacketvalue.length()  % bytusifrovano))),0,res->ai_addr,res->ai_addrlen) <=1)
 		{
 			fprintf(stderr,"Chyba pri posilani uvodniho packetu"); //Locally detected errors are indicated by a return value of -1.
 			return 1;
@@ -391,13 +393,13 @@ int main(int argc, char **argv){
 			CryptedData= CryptFunction(buff1430,available);
 			free(buff1430);
 					 
-		memcpy(packet+sizeof(struct icmphdr),CryptedData,available+(16 - (available% 16)));
+		memcpy(packet+sizeof(struct icmphdr),CryptedData,available+(bytusifrovano - (available% bytusifrovano)));
 
 		/*ssize_t sendto(int sockfd, const void *buf, size_t len, int flags,
 				const struct sockaddr *dest_addr, socklen_t addrlen);
 				*/
 
-		if (sendto(mysocket,packet,sizeof(struct icmp)+available+(16 - (available% 16)),0,res->ai_addr,res->ai_addrlen) <=1)
+		if (sendto(mysocket,packet,sizeof(struct icmp)+available+(bytusifrovano - (available% bytusifrovano)),0,res->ai_addr,res->ai_addrlen) <=1)
 		{
 			fprintf(stderr,"Chyba pri posilani"); //Locally detected errors are indicated by a return value of -1.
 			return 1;
